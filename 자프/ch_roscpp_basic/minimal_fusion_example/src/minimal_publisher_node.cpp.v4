@@ -1,0 +1,50 @@
+#include "rclcpp/rclcpp.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+
+class MinimalPublisher : public rclcpp::Node {
+  public:
+  MinimalPublisher(): Node("minimal_publisher"), count_(0) {
+    auto param_desc_timer_period = rcl_interfaces::msg::ParameterDescriptor{};
+    param_desc_timer_period.description = "The period of timer_callback in ms.";
+    this->declare_parameter("timer_period", 1000, param_desc_timer_period);
+    int ival = this->get_parameter("timer_period").as_int();
+    std::chrono::milliseconds timer_period_in_ms = std::chrono::milliseconds(ival);
+
+    auto param_desc_init_x = rcl_interfaces::msg::ParameterDescriptor{};
+    param_desc_init_x.description = "The initial value of x in meter.";
+    this->declare_parameter("init_x", .0, param_desc_init_x);
+    init_x_ = this->get_parameter("init_x").as_double();
+
+    auto param_desc_init_y = rcl_interfaces::msg::ParameterDescriptor{};
+    param_desc_init_y.description = "The initial value of y in meter.";
+    this->declare_parameter("init_y", .0, param_desc_init_y);
+    init_y_ = this->get_parameter("init_y").as_double();
+
+    publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("topic", 10);
+    timer_ = this->create_wall_timer(timer_period_in_ms, std::bind(&MinimalPublisher::timer_callback, this));
+  }
+  private:
+  void timer_callback() {
+    auto message = geometry_msgs::msg::PoseStamped();
+    message.header.stamp = this->now();
+    message.header.frame_id = "map";
+    message.pose.position.x = init_x_;
+    message.pose.position.y = init_y_;
+    message.pose.position.z = 0;
+    RCLCPP_INFO(this->get_logger(), "Publishing: count_=%ld", ++count_); 
+    publisher_->publish(message);
+  }
+  double init_x_;
+  double init_y_;
+  rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr publisher_;
+  size_t count_;
+};
+
+int main(int argc, char ** argv)
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<MinimalPublisher>());
+  rclcpp::shutdown();
+  return 0;
+}

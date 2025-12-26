@@ -1,0 +1,56 @@
+#include <memory.h>
+
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+
+using namespace std::chrono_literals;
+using std::placeholders::_1;
+
+class MinimalFusion : public rclcpp::Node {
+  public:
+  MinimalFusion(): Node("minimal_fusion"), count_1(0), count_2(0) {
+    auto param_desc = rcl_interfaces::msg::ParameterDescriptor{};
+    param_desc.description = "This parameter defines the period of timer_callback in ms.";
+    this->declare_parameter("timer_period", 1000, param_desc);
+
+    int value = this->get_parameter("timer_period").as_int();
+    std::chrono::milliseconds timer_period_in_ms = std::chrono::milliseconds(value);
+
+    subscription_1 = this->create_subscription<std_msgs::msg::String>("topic_1", 10, std::bind(&MinimalFusion::topic_callback_1, this, _1));
+    subscription_2 = this->create_subscription<std_msgs::msg::String>("topic_2", 10, std::bind(&MinimalFusion::topic_callback_2, this, _1));    
+    publisher_ = this->create_publisher<std_msgs::msg::String>("topic_3", 10);
+    timer_ = this->create_wall_timer(timer_period_in_ms, std::bind(&MinimalFusion::timer_callback, this));
+  }
+  private:
+  void topic_callback_1(const std_msgs::msg::String & msg) {
+    count_1++;
+    RCLCPP_INFO(this->get_logger(), "Receiving: topic_callback_1: '%s'", msg.data.c_str());
+  }
+  void topic_callback_2(const std_msgs::msg::String & msg) {
+    count_2++;
+    RCLCPP_INFO(this->get_logger(), "Receiving: topic_callback_2: '%s'", msg.data.c_str());
+  }
+
+  void timer_callback() {
+    int count = count_1 + count_2;
+    auto message = std_msgs::msg::String();
+    message.data = "timer_callback: number of msgs received = " + std::to_string(count);
+    RCLCPP_INFO(this->get_logger(), "Publishing: '%s'", message.data.c_str());
+    publisher_->publish(message);
+  }
+  
+  size_t count_1;
+  size_t count_2;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr subscription_1;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr subscription_2;
+  rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_;
+};
+
+int main(int argc, char ** argv)
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<MinimalFusion>());
+  rclcpp::shutdown();
+  return 0;
+}

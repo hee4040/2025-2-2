@@ -1,0 +1,1 @@
+        if (arr[j] < x || (arr[j] == x && pts[j].first > pivotX)) {

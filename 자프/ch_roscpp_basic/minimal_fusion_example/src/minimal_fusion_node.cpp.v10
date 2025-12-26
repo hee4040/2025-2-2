@@ -1,0 +1,102 @@
+#include <memory.h>
+#include "rclcpp/rclcpp.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+
+#include <sys/types.h>
+#include "rclcpp/executor.hpp"
+#include "rclcpp/executor_options.hpp"
+
+#include <mutex>
+
+using std::placeholders::_1;
+
+class MinimalFusion : public rclcpp::Node {
+  public:
+  // MinimalFusion(): Node("minimal_fusion"), count_1(0), count_2(0) {
+  MinimalFusion(const rclcpp::NodeOptions & options) : Node("minimal_fusion", options), count_1(0), count_2(0) {
+    auto param_desc = rcl_interfaces::msg::ParameterDescriptor{};
+    param_desc.description = "This parameter defines the period of timer_callback in ms.";
+    this->declare_parameter("timer_period", 1000, param_desc);
+
+    int value = this->get_parameter("timer_period").as_int();
+    std::chrono::milliseconds timer_period_in_ms = std::chrono::milliseconds(value);
+
+    callback_group_1 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions options_1;
+    options_1.callback_group = callback_group_1;
+
+    callback_group_2 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions options_2;
+    options_2.callback_group = callback_group_2;
+
+    callback_group_3 = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+    subscription_1 = this->create_subscription<geometry_msgs::msg::PoseStamped>("topic_1", 10, std::bind(&MinimalFusion::topic_callback_1, this, _1), options_1);
+    subscription_2 = this->create_subscription<geometry_msgs::msg::PoseStamped>("topic_2", 10, std::bind(&MinimalFusion::topic_callback_2, this, _1), options_2);    
+    publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("topic_3", 10);
+    timer_ = this->create_wall_timer(timer_period_in_ms, std::bind(&MinimalFusion::timer_callback, this), callback_group_3);
+  }
+  private:
+  void topic_callback_1(const geometry_msgs::msg::PoseStamped & msg) {
+    std::unique_lock<std::mutex> ulock(mutex_1); // critical section starts.
+    count_1++;
+    msg_1 = msg;
+    ulock.unlock(); // critical section ends.
+    pid_t tid = gettid();
+    RCLCPP_INFO(this->get_logger(), "[TID=%d] Receiving: topic_callback_1: count_1=%ld", tid, count_1);
+  }
+  void topic_callback_2(const geometry_msgs::msg::PoseStamped & msg) {
+    std::unique_lock<std::mutex> ulock(mutex_2); // critical section starts.
+    count_2++;
+    msg_2 = msg;
+    ulock.unlock(); // critical section ends.
+    pid_t tid = gettid();
+    RCLCPP_INFO(this->get_logger(), "[TID=%d] Receiving: topic_callback_2: count_2=%ld", tid, count_2);
+  }
+  void timer_callback() {
+    std::unique_lock<std::mutex> ulock1(mutex_1, std::defer_lock);
+    std::unique_lock<std::mutex> ulock2(mutex_2, std::defer_lock);
+    size_t count = count_1 + count_2;
+    auto message = geometry_msgs::msg::PoseStamped();
+    message.header.stamp = this->now();
+    message.header.frame_id = "map";
+    std::lock(ulock1, ulock2); // critical section starts.
+    message.pose.position.x = (msg_1.pose.position.x + msg_2.pose.position.x)/2;
+    message.pose.position.y = (msg_1.pose.position.y + msg_2.pose.position.y)/2;
+    message.pose.position.z = (msg_1.pose.position.z + msg_2.pose.position.z)/2;
+    ulock1.unlock(); // critical section ends.
+    ulock2.unlock();
+    pid_t tid = gettid();
+    RCLCPP_INFO(this->get_logger(), "[TID=%d] Publishing: timer_callback: number of msgs received = %ld", tid, count);
+    publisher_->publish(message);
+  }
+  size_t count_1, count_2;
+  geometry_msgs::msg::PoseStamped msg_1, msg_2;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr subscription_1;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr subscription_2;
+  rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr publisher_;
+  rclcpp::CallbackGroup::SharedPtr callback_group_1;
+  rclcpp::CallbackGroup::SharedPtr callback_group_2;
+  rclcpp::CallbackGroup::SharedPtr callback_group_3;
+  std::mutex mutex_1;
+  std::mutex mutex_2;
+};
+
+#include "rclcpp_components/register_node_macro.hpp"
+RCLCPP_COMPONENTS_REGISTER_NODE(MinimalFusion)
+/*
+int main(int argc, char ** argv)
+{
+  rclcpp::init(argc, argv);
+  // rclcpp::executors::SingleThreadedExecutor executor;
+  size_t num_threads = 4;
+  rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), num_threads);
+  rclcpp::Node::SharedPtr node = std::make_shared<MinimalFusion>();
+  executor.add_node(node);
+  executor.spin();
+
+  rclcpp::shutdown();
+  return 0;
+}
+*/

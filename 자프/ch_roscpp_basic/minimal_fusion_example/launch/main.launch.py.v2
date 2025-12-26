@@ -1,0 +1,26 @@
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+def generate_launch_description():
+    return LaunchDescription([
+        Node(
+            package="minimal_fusion_example",
+            executable="minimal_publisher_node",
+            name="talker_w_period_1s",
+            output="screen",
+            emulate_tty=True,
+            parameters=[
+                {"timer_period": 1000}
+            ]
+        ),
+        Node(
+            package="minimal_fusion_example",
+            executable="minimal_publisher_node",
+            name="talker_w_period_2s",
+            output="screen",
+            emulate_tty=True,
+            parameters=[
+                {"timer_period": 2000}
+            ]
+        )
+    ])

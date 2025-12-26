@@ -1,0 +1,58 @@
+#include <memory.h>
+#include "rclcpp/rclcpp.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+
+using std::placeholders::_1;
+
+class MinimalFusion : public rclcpp::Node {
+  public:
+  MinimalFusion(): Node("minimal_fusion"), count_1(0), count_2(0) {
+    auto param_desc = rcl_interfaces::msg::ParameterDescriptor{};
+    param_desc.description = "This parameter defines the period of timer_callback in ms.";
+    this->declare_parameter("timer_period", 1000, param_desc);
+
+    int value = this->get_parameter("timer_period").as_int();
+    std::chrono::milliseconds timer_period_in_ms = std::chrono::milliseconds(value);
+
+    subscription_1 = this->create_subscription<geometry_msgs::msg::PoseStamped>("topic_1", 10, std::bind(&MinimalFusion::topic_callback_1, this, _1));
+    subscription_2 = this->create_subscription<geometry_msgs::msg::PoseStamped>("topic_2", 10, std::bind(&MinimalFusion::topic_callback_2, this, _1));    
+    publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("topic_3", 10);
+    timer_ = this->create_wall_timer(timer_period_in_ms, std::bind(&MinimalFusion::timer_callback, this));
+  }
+  private:
+  void topic_callback_1(const geometry_msgs::msg::PoseStamped & msg) {
+    count_1++;
+    msg_1 = msg;
+    RCLCPP_INFO(this->get_logger(), "Receiving: topic_callback_1: count_1=%ld", count_1);
+  }
+  void topic_callback_2(const geometry_msgs::msg::PoseStamped & msg) {
+    count_2++;
+    msg_2 = msg;
+    RCLCPP_INFO(this->get_logger(), "Receiving: topic_callback_2: count_2=%ld", count_2);
+  }
+  void timer_callback() {
+    size_t count = count_1 + count_2;
+    auto message = geometry_msgs::msg::PoseStamped();
+    message.header.stamp = this->now();
+    message.header.frame_id = "map";
+    message.pose.position.x = (msg_1.pose.position.x + msg_2.pose.position.x)/2;
+    message.pose.position.y = (msg_1.pose.position.y + msg_2.pose.position.y)/2;
+    message.pose.position.z = (msg_1.pose.position.z + msg_2.pose.position.z)/2;
+    RCLCPP_INFO(this->get_logger(), "Publishing: timer_callback: number of msgs received = %ld", count);
+    publisher_->publish(message);
+  }
+  size_t count_1, count_2;
+  geometry_msgs::msg::PoseStamped msg_1, msg_2;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr subscription_1;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr subscription_2;
+  rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr publisher_;
+};
+
+int main(int argc, char ** argv)
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<MinimalFusion>());
+  rclcpp::shutdown();
+  return 0;
+}

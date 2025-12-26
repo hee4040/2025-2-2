@@ -1,0 +1,46 @@
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+def generate_launch_description():
+    return LaunchDescription([
+        Node(
+            package="minimal_fusion_example",
+            executable="minimal_publisher_node",
+            name="talker_w_period_1s",
+            output="screen",
+            emulate_tty=True,
+            parameters=[
+                {"timer_period": 1000},
+                {"init_x": 1.0},
+                {"init_y": 0.0},
+            ],
+            remappings=[
+                ('topic', 'topic_1'),
+            ],
+        ),
+        Node(
+            package="minimal_fusion_example",
+            executable="minimal_publisher_node",
+            name="talker_w_period_2s",
+            output="screen",
+            emulate_tty=True,
+            parameters=[
+                {"timer_period": 2000},
+                {"init_x": 0.0},
+                {"init_y": 1.0},
+            ],
+            remappings=[
+                ('topic', 'topic_2'),
+            ],
+        ),
+        Node(
+            package="minimal_fusion_example",
+            executable="minimal_fusion_node",
+            name="fusion_w_period_1s",
+            output="screen",
+            emulate_tty=True,
+            parameters=[
+                {"timer_period": 1000}
+            ],
+        )
+    ])
